@@ -1,6 +1,6 @@
 /*
- * ���܂�ȒP�ł͂Ȃ��񎟌��v�f��FEM�v���O�����B
- *  ��ҁF����_�s(�Y�@�G���W�j�A�����O �}�l�W���[)
+ * あまり簡単ではない二次元要素のFEMプログラム。
+ *  作者：食卓塩
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +9,7 @@
 #include <math.h>
 
 /*
- *  �ėp�}�N��
+ *  汎用マクロ
  */
 #define ON  (1)
 #define OFF (0)
@@ -30,38 +30,38 @@
 //MODULE INTEGRAL
 /*******************************************************************************
  *
- * �K�E�X�̐��l�ϕ��_�Əd�݂̒�`
+ * ガウスの数値積分点と重みの定義
  *
  ******************************************************************************/
 /*
- * ���v�f�̐ϕ��_���W
- *  �e�`�󂲂Ǝ������ƂɌʂ̔z��Ƃ��Ă��邪�A
- *  ���p����Ƃ��͎��������܂��Ă���̂ŁA
- *  ���̕����������������낤�Ɣ��f�������Ƃɂ��B
+ * 線要素の積分点座標
+ *  各形状ごと次数ごとに個別の配列としているが、
+ *  引用するときは次数が決まっているので、
+ *  この方が効率がいいだろうと判断したことによる。
  */
-/* ����1�`3���̐ϕ��_�ʒu�̒�`�B */
+/* 順に1～3次の積分点位置の定義。 */
 #define __LL1_it  0.577350269189626
 #define __LL2_it  0.774596669241483
 #define __LL3_it1 0.861136311594053
 #define __LL3_it2 0.339981043584856
 
-/* �ϕ��_�̈ʒu�̔z��B�e�����p�Ɍʂ̔z��Ƃ��Ē�`����B */
+/* 積分点の位置の配列。各次数用に個別の配列として定義する。 */
 // static double LL0_it [] = { 0, };
 static double LL1_it [] = { -__LL1_it, __LL1_it, };
 static double LL2_it [] = { -__LL2_it, 0, __LL2_it, };
 static double LL3_it [] = { -__LL3_it1, -__LL3_it2, __LL3_it2, __LL3_it1, };
 
-/* 3���v�f�̂��߂̏d�݂̒l�B�������Ȃ̂Ń}�N����`����B */
+/* 3次要素のための重みの値。無理数なのでマクロ定義する。 */
 #define __LL3_wt1 0.347854845137454
 #define __LL3_wt2 0.652145154862456
 
-/* 0�`3���̏d�݂̔z��B�ϕ��_�ʒu���l�A�ʂ̔z��Ƃ���B */
+/* 0～3次の重みの配列。積分点位置同様、個別の配列とする。 */
 // static double LL0_wt [] = { 2 };
 static double LL1_wt [] = { 1, 1, };
 static double LL2_wt [] = { 5./9, 8./9, 5./9, };
 static double LL3_wt [] = { __LL3_wt1, __LL3_wt2, __LL3_wt2, __LL3_wt1, };
 
-/* �O�p�`�v�f�̐ϕ��_�Ǝ����B�O�p�`�v�f�ɂ�0���̂��̂͂Ȃ��̂ŏȗ�����B */
+/* 三角形要素の積分点と次数。三角形要素には0次のものはないので省略する。 */
 static double Tr1_it [] = { 1./3., 1./3., };
 static double Tr2_it [] = { 0.5, 0.5, 0, 0.5, 0.5, 0, };
 static double Tr3_it [] = { 1./3., 1./3., 0.5, 0.5, 0.0, 0.5, 0.5, 0.0, 1, 0, 0, 1, 0, 0, };
@@ -69,7 +69,7 @@ static double Tr1_wt [] = { .5, };
 static double Tr2_wt [] = { 1./6., 1./6., 1./6., };
 static double Tr3_wt [] = { 9./40, 1./15, 1./15, 1./15, 1./40., 1./40., 1./40., };
 
-/* �l�p�`�v�f�̐ϕ��_�ʒu�Əd�݁B���v�f�̃f�[�^�[����쐬�����B */
+/* 四角形要素の積分点位置と重み。線要素のデーターから作成した。 */
 static double Q0_it [] = { 0, 0, };
 static double Q1_it [] = {
 	-__LL1_it, -__LL1_it, __LL1_it, -__LL1_it,
@@ -102,7 +102,7 @@ static double Q3_wt [] = {
 	__LL3_wt11, __LL3_wt12, __LL3_wt12, __LL3_wt11,
 };
 
-// �Ȃ��׏d��������Ƃ��̕ӂɂ�����ϕ��_�ʒu
+// 曲げ荷重をかけるときの辺における積分点位置
 #define SQRT_2 1.4142135623730950488016887242097
 #define CVT_PT1(x) (SQRT_2*((x)+1)/2)
 #define CVT_PT2(x) (((x)+1)/2)
@@ -165,11 +165,11 @@ static double QE3_it [] = {
 //MODULE SHAPE_FUNC
 /*******************************************************************************
  *
- * �e��`��֐��̒�`
+ * 各種形状関数の定義
  *
  ******************************************************************************/
-/* ���v�f�̌`��֐��B�͈͂�[-1,1]
- * ��ϐ��p�̊֐��̒�`���s���A���̏�ő��ϐ��p�̌`��֐��̃��b�p�[���`����B
+/* 線要素の形状関数。範囲は[-1,1]
+ * 一変数用の関数の定義を行い、その上で多変数用の形状関数のラッパーを定義する。
  */
 static void __LL1_shape_func (double *N, const double t)
 {
@@ -213,7 +213,7 @@ static void __dLL3_shape_func (double *N, const double t)
 	N [3] =  (27*t*t+18*t-1)/16;
 }
 
-/* ���ϐ��p�̃��b�p�[�B t�Ŏg����͍̂ŏ��̍��ڂł���B*/
+/* 多変数用のラッパー。 tで使われるのは最初の項目である。*/
 void LL1 (double *N, const double *t) { __LL1_shape_func(N,*t); }
 void LL2 (double *N, const double *t) { __LL2_shape_func(N,*t); }
 void LL3 (double *N, const double *t) { __LL3_shape_func(N,*t); }
@@ -221,7 +221,7 @@ void dLL1 (double *N, const double *t) { __dLL1_shape_func(N,*t); }
 void dLL2 (double *N, const double *t) { __dLL2_shape_func(N,*t); }
 void dLL3 (double *N, const double *t) { __dLL3_shape_func(N,*t); }
 
-/* �O�p�`�v�f�̌`��֐� */
+/* 三角形要素の形状関数 */
 void Tr1 (double *N, const double *t) {
 	N [0] = t [0];
 	N [1] = t [1];
@@ -303,7 +303,7 @@ void dTr3L (double *N, const double *t) {
 	N [19] = 27 * t1 * (t3 - t2);
 }
 
-/* �����ɐߓ_���Ȃ�3���O�p�`�v�f�̌`��֐��B */
+/* 中央に節点がない3次三角形要素の形状関数。 */
 void Tr3S (double *N, const double *t) {
 	double t1 = t[0], t2 = t[1], t3 = 1-t1-t2;
 	N [0] = t1 * (3 * t1 - 2) * (3 * t1 - 1) / 2;
@@ -340,9 +340,9 @@ void dTr3S (double *N, const double *t) {
 	N [17] = 9 * t1 * (-2 * t1 + 2 * t3) / 2;
 }
 
-/* �l�p�`�v�f�̌`��֐��B
- * 2���ȏ�̃Z�����f�B�s�e�B�v�f�̒�`�̓c�B�G���L�[���B�b�c�̒�{�ɋ������B
- * ���O�����W�F�v�f�͐��v�f�̌`��֐����|�����킹��Ƃł���B
+/* 四角形要素の形状関数。
+ * 2次以上のセレンディピティ要素の定義はツィエンキーヴィッツの定本に拠った。
+ * ラグランジェ要素は線要素の形状関数を掛け合わせるとできる。
  */
 static void __Q1 (double *N, const double *L1, const double *L2) {
 	N [0] = L1 [0] * L2 [0];
@@ -531,7 +531,7 @@ void dQ3S (double *N, const double *t) {
 }
 
 /*
- * �ʏ��f�[�^�[
+ * 面情報データー
  */
 // static int _FINFO_L1 [] = { 0, 1, };
 // static int _FINFO_L2 [] = { 0, 1, 2, };
@@ -560,20 +560,20 @@ static int _FINFO_Q3 [] = {
 //MODULE DATA_DEF
 /*******************************************************************************
  *
- * �L���v�f��͂ɕK�v�ȃf�[�^�[�^�̒�`
+ * 有限要素解析に必要なデーター型の定義
  *
  ******************************************************************************/
 
 
-/* �����l�f�[�^�[�B��{�^�̂ق��A�����̍\����͂̂��߂̃f�[�^�[���`����B */
+/* 物性値データー。基本型のほか、等方体構造解析のためのデーターを定義する。 */
 typedef struct MatData *pMatData;
 typedef struct {
 	int number;
 	char *name;
 	int type;
-	pMatData ref_mat;	// �Q�ƕ����e�[�u��
-	double init_temp;	// �������x
-	double density;		// ���ʖ��x
+	pMatData ref_mat;	// 参照物性テーブル
+	double init_temp;	// 初期温度
+	double density;		// 質量密度
 } MatData;
 
 typedef struct {
@@ -583,10 +583,10 @@ typedef struct {
 	pMatData ref_mat;
 	double init_temp;
 	double density;
-	double young, poisson, shar_mod;	// �����O���A�|�A�\����A���c�e���W��
+	double young, poisson, shar_mod;	// ヤング率、ポアソン比、剪団弾性係数
 } IsoMatData;
 
-/* �􉽓����l */
+/* 幾何特性値 */
 typedef struct {
 	int number;
 	char *name;
@@ -603,60 +603,60 @@ typedef struct {
 	double thick;
 } PSS_GeomData;
 
-/* �p�[�c�f�[�^�[�B�����l�Ɗ􉽓����l�����B�v�f����Q�Ƃ����B */
+/* パーツデーター。物性値と幾何特性値を持つ。要素から参照される。 */
 typedef struct {
 	int number;
 	char *name;
 	MatData *mat;
 	GeomData *geom;
-	double *init_mat; // ���������}�g���b�N�X
+	double *init_mat; // 初期物性マトリックス
 } PartData;
 
-/* �ߓ_�f�[�^�[ */
+/* 節点データー */
 typedef struct {
 	int number;
 	double *coord;
 } Node;
 
-/* �v�f�^�C�v�\���� */
+/* 要素タイプ構造体 */
 typedef struct {
 	int number;
 	char *name;
 	int prob, ndim, ndof, nvstat, ijh_scale, ijh_add;
 } ElementTypeInfo;
 
-/* �`��֐��̃|�C���^ */
+/* 形状関数のポインタ */
 typedef void (*SF)(double *, const double *);
 
-/* �v�f�ϕ��v�Z���\���̂̒�` */
+/* 要素積分計算情報構造体の定義 */
 struct ElementInfo;
 typedef struct {
 	int number;
-	int nnode, norder, ntint, ndim; // �v�f������̐ߓ_���A�����A�S�ϕ��_���A������
-	SF sf, dsf;   // �`��֐��ւ̃|�C���^�[
-	double *N, *dN, *ipt, *wt; // �`��֐��ƌ`��֐��̔����`�A�ϕ��_���Əd�݂̔z��
+	int nnode, norder, ntint, ndim; // 要素あたりの節点数、次数、全積分点数、次元数
+	SF sf, dsf;   // 形状関数へのポインター
+	double *N, *dN, *ipt, *wt; // 形状関数と形状関数の微分形、積分点情報と重みの配列
 } ElemIntegralInfo;
 
-/* �v�f���\���̂̒�`�B�e�v�f����Q�Ƃ����B
- * �v�Z��񂪓���邪�A�v�f�S�̂Ɗe�\�ʂ̌`��֐����܂ނ��߂ł���B
- * �v�f�\�ʂ̌v�Z�͕��z�׏d�̌v�Z�ɗp����B
+/* 要素情報構造体の定義。各要素から参照される。
+ * 計算情報が二つあるが、要素全体と各表面の形状関数を含むためである。
+ * 要素表面の計算は分布荷重の計算に用いる。
  */
 typedef struct {
 	int number;
 	char *name;
-	int nvert, nface;  // �v�f������̐ߓ_���A���_(���ߓ_)�̐��A�\�ʂ̐�
-	ElemIntegralInfo *info1, *info2, *info3, *info4; // �v�f�S�̂ƕ\�ʂ̌v�Z���
+	int nvert, nface;  // 要素あたりの節点数、頂点(隅節点)の数、表面の数
+	ElemIntegralInfo *info1, *info2, *info3, *info4; // 要素全体と表面の計算情報
 	int *edge_list;
 } ElementInfo;
 
-/* �v�Z���f�[�^�[�B�\����͂ɓ��������f�[�^�[�̑g�ݕ������Ă��邪�A����ȊO�ɂ��g�p�\�ł���B */
+/* 計算情報データー。構造解析に特化したデーターの組み方をしているが、それ以外にも使用可能である。 */
 typedef struct {
-	double detJ, sigy, *iJH;  // ���R�r�A���̍s��l��J-1*H�̌��ʁB
-	double *stress, *strain, *FT; // ���͂ƂЂ��݁A�ό`���z
-	double *stat;   // ��ԕϐ�(���x�Ȃ�)
+	double detJ, sigy, *iJH;  // ヤコビアンの行列値とJ-1*Hの結果。
+	double *stress, *strain, *FT; // 応力とひずみ、変形勾配
+	double *stat;   // 状態変数(温度など)
 } ElementCalcInfo;
 
-/* �v�f�f�[�^�[ */
+/* 要素データー */
 typedef struct {
 	int number;
 	PartData *part;
@@ -665,9 +665,9 @@ typedef struct {
 	ElementCalcInfo *cinfo;
 } Element;
 
-/* �Z�b�g�f�[�^�[ */
-/* �ŏ��ɃZ�b�g�Ɋ܂܂��f�[�^�[�^���`����B
- * ���̂悤�Ȃ��̂͐��l���̂��̂��g�p�����A�V���{���萔���g�p����B
+/* セットデーター */
+/* 最初にセットに含まれるデーター型を定義する。
+ * このようなものは数値そのものを使用せず、シンボル定数を使用する。
  */
 enum { SET_NONE=0, SET_NODE, SET_SEG, SET_ELEM, SET_FACE, SET_PART, };
 typedef struct {
@@ -678,115 +678,115 @@ typedef struct {
 } SetData;
 
 /*
- * ���E�����̒�`
+ * 境界条件の定義
  */
 
-/* �S�������̒�` */
+/* 拘束条件の定義 */
 typedef struct {
 	int number;
 	char *name;
-	int set_type;		// �Z�b�g�^�C�v�BSET_NODE�ŌŒ�
+	int set_type;		// セットタイプ。SET_NODEで固定
 	int ndata, *data;
-	int flags [6];		// �S��������������ꍇ�A1���Z�b�g����B
-	double value [6];	// �S�������̒l�B
+	int flags [6];		// 拘束条件をかける場合、1をセットする。
+	double value [6];	// 拘束条件の値。
 } FixDisp;
 
-/* �׏d�����̒�` */
-// �׏d��������ΏہB�ߓ_�E�\�ʁE�̐�(�v�f�S��)
+/* 荷重条件の定義 */
+// 荷重をかける対象。節点・表面・体積(要素全体)
 enum { BC_POINT=1, BC_BODY = SET_ELEM, BC_FACE = SET_FACE, };
 
-// ���͕��@�B
-// ����(0)�A�e�����̒l�A�����Ƒ傫��(�����͐��K�������)�A�����Ƒ傫���̐ρA������������(�ӁE�ʉ׏d)
+// 入力方法。
+// 無効(0)、各成分の値、方向と大きさ(方向は正規化される)、方向と大きさの積、垂直水平方向(辺・面荷重)
 enum { BC_NONE, BC_VAL, BC_VEC, BC_VAL_VEC, BC_NORMAL, };
 
-// �׏d�����̒ǉ��f�[�^�[�B���͎���10�{����
-enum { BC_LENGTH, BC_AREA = 1, };		// �P�ʒ���(�����̂�)�ƒP�ʖʐς��Ƃ̓��́B
-						// �����ɉ׏d��������v�f�ŗL���B�\���b�h�V�F���E�ő̗v�f�ł͖��������B
-enum { BC_VOLVAL, BC_DENSITY = 1, };		// �̐ϗ͂̃t���O�B�f�t�H���g�͔�d���l��
+// 荷重条件の追加データー。入力時は10倍する
+enum { BC_LENGTH, BC_AREA = 1, };		// 単位長さ(線分のみ)と単位面積ごとの入力。
+						// 線分に荷重をかける要素で有効。ソリッドシェル・固体要素では無視される。
+enum { BC_VOLVAL, BC_DENSITY = 1, };		// 体積力のフラグ。デフォルトは比重を考慮
 
 typedef struct {
 	int number;
 	char *name;
-	int set_type;		// �Z�b�g�^�C�v�B
+	int set_type;		// セットタイプ。
 	int ndata, *data;
 	int load_type;
-	int val_type;	// ���3�̗񋓑̗v�f�̊i�[��
-	double value [4], load [3];	// ���͒l�Ǝ��ۂ̉׏d
+	int val_type;	// 上の3つの列挙体要素の格納先
+	double value [4], load [3];	// 入力値と実際の荷重
 } LoadData;
 
 //MODULE GRLBAL_DATA
 /*****************************************************************************
- * ���ϐ��̐錾
+ * 大域変数の宣言
  *****************************************************************************/
 
-/* ����Ԃł̍��W�n�̐��Ǝ��R�x�̐� */
+/* 大域空間での座標系の数と自由度の数 */
 int mdof = 2;
 int mdim = 2;
 
-/* ��̓^�C�g�� */
+/* 解析タイトル */
 char *title;
 
-/* �ėp���e�l */
+/* 汎用許容値 */
 double tolerance = 1e-10;
 
-/* ���ԍ��B�񋓑̂Ƃ��邱�Ƃŕ�����₷�������B */
+/* 問題番号。列挙体とすることで分かりやすくした。 */
 enum { PT_None=0, PT_PSS, PT_PSN, PT_AXSOL, };
 int prob;
 
-/* �p�[�c�╨���l�A�􉽓����l�̔z�� */
+/* パーツや物性値、幾何特性値の配列 */
 int npart, nmat, ngeom;
 PartData *part;
 MatData **mat;
 GeomData **geom;
 
-/* �ߓ_�Ɨv�f�̔z��̐錾 */
+/* 節点と要素の配列の宣言 */
 int ntnode, ntelem;
 Node *node;
 Element *elem;
 double *coord;
 
-/* �Z�b�g�f�[�^�[�̐錾 */
+/* セットデーターの宣言 */
 int nset;
 SetData *set;
 
-/* ���E�����f�[�^�[�̐錾 */
+/* 境界条件データーの宣言 */
 int nfdisp, npload, nfload, nbload;
 FixDisp *fdisp;
 LoadData *pload, *fload, *bload;
 
-/* �S�̍����}�g���b�N�X�̐��l�i�[���@�F�����A�t���}�g���b�N�X�A�o���h�}�g���b�N�X�A�Ώ̍s��(�㑤�̂�) */
+/* 全体剛性マトリックスの数値格納方法：無効、フルマトリックス、バンドマトリックス、対称行列(上側のみ) */
 enum { RANGE_NONE, RANGE_ALL, RANGE_BEGIN_END, RANGE_SYMM_UPPER, };
 
-/* �S�̍����}�g���b�N�X�ւ̐��l�̊i�[���@�A��L�̒l�̂����ꂩ������B */
+/* 全体剛性マトリックスへの数値の格納方法、上記の値のいずれかが入る。 */
 int sys_range_mode;
 
-/* �S���̏�ԁB���ɁA�S���Ȃ��A0�ȊO�ōS���A0�ōS���A�\�����Ɛڑ����Ă��Ȃ��ߓ_ */
+/* 拘束の状態。順に、拘束なし、0以外で拘束、0で拘束、構造物と接続していない節点 */
 enum { KLDOF_NONE, KLDOF_NONZERO, KLDOF_ZERO, KLDOF_ORPHAN, };
 
-/* ���C�����\���́B�S�̍����̏����i�[���� */
+/* ライン情報構造体。全体剛性の情報を格納する */
 typedef struct {
-	int pos, start, end, size;	/* �n�_�ƏI�_�̎��̈ʒu�ƃT�C�Y */
+	int pos, start, end, size;	/* 始点と終点の次の位置とサイズ */
 	double *p;
 } K_line_info;
 K_line_info *line_info;
 
-/* �S�̍����̎��f�[�^�[�ƕψʂƉ׏d */
+/* 全体剛性の実データーと変位と荷重 */
 double *sysk, *lhs_value, *rhs_value;
 
-/* �v�Z���ʂ��i�[ */
+/* 計算結果を格納 */
 double *disp, *force;
 
-/* �ߓ_�ԍ��Ǝ��R�x����S�̍����̃C���f�b�N�X���t�Ɉ������X�g */
+/* 節点番号と自由度から全体剛性のインデックスを逆に引くリスト */
 int *rev_line_info, *decode_rev_info;
-/* �e���E�����̊J�n�ʒu�ƏI���ʒu */
+/* 各境界条件の開始位置と終了位置 */
 int rank_line_info [4][2];
 
-/* �ߓ_���Q�Ƃ���v�f���Ɗe���R�x�̃^�C�v */
+/* 節点が参照する要素数と各自由度のタイプ */
 static int *nodal_dof_list;
 
 //MODULE INIT_ELEMENT_INFO
 /*
- * �v�f���e�[�u���̒�`
+ * 要素情報テーブルの定義
 */
 ElementTypeInfo etinfo [] = {
 	/* number   name                prob    dim dof stat scl add */
@@ -852,13 +852,13 @@ int neinfo  = sizeof (einfo)  / sizeof (einfo [0]);
 #include "debug.c"
 
 /*
- * �֐��̒�`
+ * 関数の定義
  */
 
-/* �v�f�ϕ��v�Z���\���̂̏����� */
+/* 要素積分計算情報構造体の初期化 */
 void init_einfo ()
 {
-		// 0�Ԗڂ̃G���g���[�͎g�p���Ȃ��̂ŁA1�𑫂���1�Ԗڂ���A�N�Z�X����悤�ɂ��Ă���B
+		// 0番目のエントリーは使用しないので、1を足して1番目からアクセスするようにしている。
 	ElemIntegralInfo *eip = eiinfo + 1;
 	int i, j;
 	for (i = 1; i < neiinfo; i++, eip++) {
@@ -866,7 +866,7 @@ void init_einfo ()
 		int ndim = eip->ndim;
 		int ntint = eip->ntint;
 		double *ipt = eip->ipt;
-		// �}�g���b�N�X�̈�̊��蓖��
+		// マトリックス領域の割り当て
 		eip->N  = malloc (sizeof (double) * ntint * nnode);
 		eip->dN = malloc (sizeof (double) * ntint * nnode * ndim);
 		for (j = 0; j < eip->ntint; j++) {
@@ -878,9 +878,9 @@ void init_einfo ()
 
 //MODULE MISC_FUNCTIONS
 /*
- * �G���֐��Q
+ * 雑役関数群
  */
-/* �ԍ�����z���̈ʒu��T���֐��Q */
+/* 番号から配列上の位置を探す関数群 */
 int search_einfo (int n)
 {
 	int i;
@@ -923,7 +923,7 @@ int search_mat (int n)
 
 // MODULE IO_DATA
 /*
- * IO���[�`���Q
+ * IOルーチン群
  */
 static int nline = 0;
 static char buffer [201];
@@ -960,7 +960,7 @@ static void read_str (FILE *fin, char **s)
 	strcpy (*s, buffer);
 }
 
-/* ���X�g�ɓ��Y�f�[�^�[��ǉ� */
+/* リストに当該データーを追加 */
 void attach_node (int *ip, int n)
 {
 	int ptr = search_node (n);
@@ -1635,7 +1635,7 @@ void io_bc (FILE *fin, FILE *fout)
 
 //MODULE MAT
 /*
- * �����s��̌v�Z
+ * 物性行列の計算
  */
 void calc_De_Iso_PSS_Mat(double *De, const MatData *tab) {
 	IsoMatData *p = (IsoMatData *)tab;
@@ -1685,7 +1685,7 @@ void calc_De_Iso_Solid_Mat(double *De, const MatData *tab)
 	D[3][3] = D[4][4] = D[5][5] = p->shar_mod;
 }
 
-/* �e�p�[�c�̏����������v�Z���� */
+/* 各パーツの初期物性を計算する */
 typedef void (*DmatFP) (double *, const MatData *);
 void calc_D_mat()
 {
@@ -1699,9 +1699,9 @@ void calc_D_mat()
 	}
 }
 
-/* �e�Y����͂̂��߂̃��[�`���Q */
-// �Ð��������߂�
-// �Ð����͐������͂̕��ϒl�ɓ�����
+/* 弾塑性解析のためのルーチン群 */
+// 静水圧を求める
+// 静水圧は垂直応力の平均値に等しい
 void calc_deviatoric_stres (double *estres, double *HSS, const double *stres)
 {
 	int i;
@@ -1713,7 +1713,7 @@ void calc_deviatoric_stres (double *estres, double *HSS, const double *stres)
 
 }
 
-// �s�ϗʂ����߂�
+// 不変量を求める
 void calc_values (double *res, const double *s)
 {
 	res [0] = s [0] + s [1] + s [2];
@@ -1726,27 +1726,27 @@ double sign (double x)
 	return x>=0? 1: -1;
 }
 
-// �剞�͂����߂�
+// 主応力を求める
 void calc_principle_values (double *res, const double *s)
 {
 }
 
-// �~�[�[�X�̑������͂����߂�
+// ミーゼスの相当応力を求める
 double mieses_stres(const double *s)
 {
 	return sqrt(s[0]*s[0]+s[1]*s[1]+s[2]*s[2]-s[0]*s[1]-s[1]*s[2]-s[2]*s[0]+3*(s[3]*s[3]+s[4]*s[4]+s[5]*s[5]));
 }
 
-// �Y�������}�g���b�N�X���v�Z����B
-// �o�T�͎O�D[1976]�ɂ��
-// ���ʉ��͂̂ݑ��ƈقȂ邪�A���͏�Ԃ̉ߒ����炱�̂悤�Ȍv�Z�ɂȂ��Ă���
+// 塑性物性マトリックスを計算する。
+// 出典は三好[1976]による
+// 平面応力のみ他と異なるが、応力状態の過程からこのような計算になっている
 void calc_PSS_IsoDp_Mat (double *_D, const MatData *tab, const double *stres, double hard)
 {
 	double *D[] = { _D, _D+3, _D+6, };
 	double S[7], G, f, sb, sigbar, estres [6];
 	IsoMatData *p = (IsoMatData *)tab;
 
-	// ���e���W���E�Ð����E�΍����͍s��E�������͂̌v�Z
+	// 横弾性係数・静水圧・偏差応力行列・相当応力の計算
 	G = p->young / (1 + p->poisson);
 	calc_deviatoric_stres (estres, &sb, stres);
 	sigbar = mieses_stres (stres);
@@ -1771,7 +1771,7 @@ void calc_PSN_IsoDp_Mat (double *_D, const MatData *tab, const double *stres, do
 	double S[7], G, f, sb, sigbar, estres[6];
 	IsoMatData *p = (IsoMatData *)tab;
 
-	// ���e���W���E�Ð����E�΍����͍s��E�������͂̌v�Z
+	// 横弾性係数・静水圧・偏差応力行列・相当応力の計算
 	G = p->young / (1 + p->poisson);
 	calc_deviatoric_stres (estres, &sb, stres);
 	sigbar = mieses_stres (stres);
@@ -1798,7 +1798,7 @@ void calc_AXSol_IsoDp_Mat (double *_D, const MatData *tab, const double *stres, 
 	double S, G, sb, sigbar, estres[6];
 	IsoMatData *p = (IsoMatData *)tab;
 
-	// ���e���W���E�Ð����E�΍����͍s��E�������͂̌v�Z
+	// 横弾性係数・静水圧・偏差応力行列・相当応力の計算
 	G = p->young / (1 + p->poisson);
 	calc_deviatoric_stres (estres, &sb, stres);
 	sigbar = mieses_stres (stres);
@@ -1816,7 +1816,7 @@ void calc_3DSolid_IsoDp_matrix (double *_D, const MatData *tab, const double *st
 	double S, G, sb, sigbar, estres[6];
 	IsoMatData *p = (IsoMatData *)tab;
 
-	// ���e���W���E�Ð����E�΍����͍s��E�������͂̌v�Z
+	// 横弾性係数・静水圧・偏差応力行列・相当応力の計算
 	G = p->young / (1 + p->poisson);
 	calc_deviatoric_stres (estres, &sb, stres);
 	sigbar = mieses_stres (stres);
@@ -1828,19 +1828,19 @@ void calc_3DSolid_IsoDp_matrix (double *_D, const MatData *tab, const double *st
 }
 
 /*
- * �w���͂̒�`
- * �Ƃ肠�����ÓT�I��Plager��Ziegler�̒�`�ɂ����̂��f�ڂ���
- * ���l�^�͓n�Ӎ_�񎁂�FEM�{(�l�b�g�ł�PDF)�ɂ��B
- * ���ɂ���E��̃_�b�V���͕΍������ł���
+ * 背応力の定義
+ * とりあえず古典的なPlagerとZieglerの定義によるものを掲載した
+ * 元ネタは渡辺浩二氏のFEM本(ネット版のPDF)による。
+ * 式にある右上のダッシュは偏差成分である
  *
- * �p�����[�^�[
- *   alp_out: ���݂̔w���͑��x�B���[�`�����Ōv�Z
- *   stress:  ��������
- *   alp_in:  �����w����
- *   sig_par: ���͑��x
+ * パラメーター
+ *   alp_out: 現在の背応力速度。ルーチン内で計算
+ *   stress:  初期応力
+ *   alp_in:  初期背応力
+ *   sig_par: 応力速度
  */
-// Plager�ɂ��w���͂̒�`�B
-// ��ij,t=(��'ij-��'ij)(��'kl-��'kl)��kl,t/(2��y^2)
+// Plagerによる背応力の定義。
+// αij,t=(σ'ij-α'ij)(σ'kl-α'kl)σkl,t/(2σy^2)
 void calcPlagerBackstresFactor(double *alp_out, const double *stres, const double *alp_in, const double *sig_par)
 {
 	int i;
@@ -1860,8 +1860,8 @@ void calcPlagerBackstresFactor(double *alp_out, const double *stres, const doubl
 	}
 }
 
-// Ziegler�ɂ��w���͂̒�`
-// ��ij,t=(��ij-��ij)(��'kl-��'kl)��kl,t/(2��y^2)
+// Zieglerによる背応力の定義
+// αij,t=(σij-αij)(σ'kl-α'kl)σkl,t/(2σy^2)
 void calcZieglerBackstresFactor(double *alp_out, const double *stres, const double *alp_in, const double *sig_par)
 {
 	int i;
@@ -1881,7 +1881,7 @@ void calcZieglerBackstresFactor(double *alp_out, const double *stres, const doub
 	}
 }
 
-/* ���R�r�A���̋t�s����v�Z����B�Ƃ��ɍs��l��Ԃ��B */
+/* ヤコビアンの逆行列を計算する。ともに行列値を返す。 */
 double invJ_2D (double *iJ, const double *J)
 {
 	double detJ;
@@ -1913,20 +1913,20 @@ double invJ_3D (double *iJ, const double *J)
 
 // MODULE B_MAT
 /*
- * �v�f�����̌v�Z
- * �悭���鏑�ЂŐ�������Ă�����̂ƈقȂ�ȉ��̏����Ōv�Z���s��
- * �z�Ȍ`�ŗv�f���������߂Ă��Ȃ��B
- * ���R�r�A���̌v�Z
- *   �`��֐��̔����}�g���b�N�XH�Ɨv�f�̐ߓ_���W�l���������邱�Ƃŋ��߂���B
- *   ���R�����A�������o���V�Čv�Z����ƕێ�R�X�g�̑�����������Ƃ�����̂Œ��ӁB
- * ���R�r�A���̍s��l�Ƌt�s������߂�B
- * J^-1��H�̐ς����߂�B�e����͂Ȃ�A����łЂ��݁\�ψʍs������߂����ƂɂȂ�B
- * J^-1�EH�̊e��ɂ��čs��ς����߂�B
- * ���̌��ʂɕ����l�Ɛ��l�ϕ��̏d�݂����������̂����߂�B
- * �S�̍����s��ɑg�ݍ��ށB
+ * 要素剛性の計算
+ * よくある書籍で説明されているものと異なり以下の順序で計算を行う
+ * 陽な形で要素剛性を求めていない。
+ * ヤコビアンの計算
+ *   形状関数の微分マトリックスHと要素の節点座標値ををかけることで求められる。
+ *   当然だが、これらをバラシて計算すると保守コストの増大を招くことがあるので注意。
+ * ヤコビアンの行列値と逆行列を求める。
+ * J^-1とHの積を求める。弾性解析なら、これでひずみ―変位行列を求めたことになる。
+ * J^-1・Hの各列について行列積を求める。
+ * この結果に物性値と数値積分の重みをかけたものを求める。
+ * 全体剛性行列に組み込む。
  */
 
-/* ���R�r�A���̌v�Z �`��֐��̔����`H�ɗv�f�̐ߓ_���W�l�������邱�Ƃœ�����B */
+/* ヤコビアンの計算 形状関数の微分形Hに要素の節点座標値をかけることで得られる。 */
 void calc_Jmat (double *J, const double *H, const Element *e)
 {
 	int i, j, k;
@@ -1939,7 +1939,7 @@ void calc_Jmat (double *J, const double *H, const Element *e)
 }
 
 /*
-   �񎟌��z��̊|���Z
+   二次元配列の掛け算
    A[sz1][sz2] = B[sz1][sz3] * C [sz3][sz2]
  */
 void mat_mul2 (double *A, const double *B, const double *C, int sz1, int sz2, int sz3)
@@ -1953,24 +1953,24 @@ void mat_mul2 (double *A, const double *B, const double *C, int sz1, int sz2, in
 }
 
 /*
-   �v�f�����̌v�Z���@
-   ����[1980]�ɂ��ƕψʂЂ��݃}�g���b�N�X��2�������ʉ���/�Ђ��ݗv�f�̏ꍇ�A�ȉ��̂悤�ɂȂ�B
-   B = [ 1 0 0 0 ][ J^-1�EH ��      ]
-       [ 0 0 0 1 ][ ��      J^-1�EH ]
+   要素剛性の計算方法
+   平居[1980]によると変位ひずみマトリックスは2次元平面応力/ひずみ要素の場合、以下のようになる。
+   B = [ 1 0 0 0 ][ J^-1・H Φ      ]
+       [ 0 0 0 1 ][ Φ      J^-1・H ]
        [ 0 1 1 0 ]
-   ������J^-1�EH�ƃ���nnode�~ndim�̍s��ł���A���̓[���s��AJ^-1�̓��R�r�A���̋t�s��A
-   H�͌`��֐��̔����`���}�g���b�N�X�z�u�������̂Ŋe��Ɍ`��֐���}��ϐ��ŕΔ����������̂����ԁB
-   ������J^-1�EH���ȉ��̂悤�ɕ\������B
-   J^-1�EH = [ H1 ]
+   ここでJ^-1・HとΦはnnode×ndimの行列であり、Φはゼロ行列、J^-1はヤコビアンの逆行列、
+   Hは形状関数の微分形をマトリックス配置したもので各列に形状関数を媒介変数で偏微分したものが並ぶ。
+   ここでJ^-1・Hを以下のように表示する。
+   J^-1・H = [ H1 ]
              [ H2 ]
-   �����B��W�J����ƈȉ��̂悤�ɂȂ�B
+   これでBを展開すると以下のようになる。
 
-   B = [ 1 0 0 0 ][ H1 ��  ]
-       [ 0 0 0 1 ][ H2 ��  ]
-       [ 0 1 1 0 ][ �� H1 ]
-                  [ �� H2 ]
-     = [ H1 �� ]
-       [ �� H2 ]
+   B = [ 1 0 0 0 ][ H1 Φ  ]
+       [ 0 0 0 1 ][ H2 Φ  ]
+       [ 0 1 1 0 ][ Φ H1 ]
+                  [ Φ H2 ]
+     = [ H1 Φ ]
+       [ Φ H2 ]
        [ H2 H1 ]
 */
 void calc_PL_B_mat (double *B, const Element *e, const double *N, const double *H, int nint)
@@ -1983,7 +1983,7 @@ void calc_PL_B_mat (double *B, const Element *e, const double *N, const double *
 	calc_Jmat (J, H, e);
 	cp->detJ = invJ_2D (iJ, J);
 	mat_mul2 (cp->iJH, iJ, H, ndim, nnode, ndim);
-	// B�}�g���b�N�X�̍쐬�B���΂�(�܂莩�R�x��)�ɒl�������Ă���B
+	// Bマトリックスの作成。一つ飛ばし(つまり自由度分)に値を代入している。
 	for (i = 0; i < nnode; i++) {
 		B [0 * size + i * 2 + 0] = B [2 * size + i * 2 + 1] = cp->iJH [i];
 		B [2 * size + i * 2 + 0] = B [1 * size + i * 2 + 1] = cp->iJH [i + nnode];
@@ -1992,16 +1992,16 @@ void calc_PL_B_mat (double *B, const Element *e, const double *N, const double *
 }
 
 /*
-   ���Ώ̌ő̗v�f�̍������v�Z����B
-   ��{�I�ɓ񎟌����ʗv�f�Ɠ������W�b�N�����A�p�x�����̂Ђ��݂����邽�߂��̕����̌v�Z�ɑ��Ⴊ������B
-   �Ђ��ݕψʍs��͎��̂悤�ɂȂ�B�a�����̂Ђ��݂�
+   軸対称固体要素の剛性を計算する。
+   基本的に二次元平面要素と同じロジックだが、角度方向のひずみが入るためこの部分の計算に相違が生じる。
+   ひずみ変位行列は次のようになる。径方向のひずみは
        1/r=N/x
-   �œ�����B������x�͐ϕ��_�ɂ�����e�ϕ��_�ł̑��a�ɂȂ�B
+   で得られる。ここでxは積分点における各積分点での総和になる。
    B = [ 1 0 0 0 0 ][ J^-1*H 0       ]
        [ 0 0 0 1 0 ][ 0      J^-1*H  ]
        [ 0 0 0 0 1 ][ 1/r    0       ]
        [ 0 1 1 0 0 ]
-   ������H3=1/x�ƒu���A���ʗv�f���l�ɓW�J����ƈȉ��̂悤�ɂȂ�B
+   ここでH3=1/xと置き、平面要素同様に展開すると以下のようになる。
    B = [ 1 0 0 0 0 ][ H1 0  ]
        [ 0 0 0 1 0 ][ H2 0  ]
        [ 0 0 0 0 1 ][ 0  H1 ]
@@ -2023,7 +2023,7 @@ void calc_AXSOL_B_mat (double *B, const Element *e, const double *N, const doubl
 	calc_Jmat (J, H, e);
 	cp->detJ = invJ_2D (iJ, J);
 	mat_mul2 (cp->iJH, iJ, H, ndim, nnode, ndim);
-	// �ϕ��_�ł̔��a�����߂�B
+	// 積分点での半径を求める。
 	cx = 0;
 	for (i = 0; i < nnode; i++)
 		cx += N [i] * node [e->conn [i]].coord [0];
@@ -2037,17 +2037,17 @@ void calc_AXSOL_B_mat (double *B, const Element *e, const double *N, const doubl
 }
 
 /*
-   �S�̍����̃Z�b�g�A�b�v
+   全体剛性のセットアップ
  */
 // MODULE TOTAL_MAT_MISC
 
-// �Ђ��ݕψʍs��Ɨv�f�����̐錾�B���\�ł����̂ł����Ő錾����B
+// ひずみ変位行列と要素剛性の宣言。結構でかいのでここで宣言する。
 double __DB__ [6 * 64 * sizeof (double)];
 double __B__ [6 * 64 * sizeof (double)];
 
 /*
- * �v�f�����}�g���b�N�X��S�̍����ɌJ�荞��
- * �e�ϕ��_���Ƃɍs���B
+ * 要素剛性マトリックスを全体剛性に繰り込む
+ * 各積分点ごとに行う。
  */
 void attach_B_mat (const Element *e, const double *D, int nint)
 {
@@ -2059,12 +2059,12 @@ void attach_B_mat (const Element *e, const double *D, int nint)
 	int ndof = etinfo [prob].ndof;
 	int size = nnode * ndof;
 	ElementCalcInfo *cp = e->cinfo + nint;
-	// �v�f�����ɕK�v�Ȓl�̌v�Z�B�ϕ��_�ł̏d�݂ƃ��R�r�A���̐ς����߂�B
+	// 要素剛性に必要な値の計算。積分点での重みとヤコビアンの積を求める。
 	double factor = info->wt [nint] * cp->detJ;
-	// B^T*D���v�Z����B
+	// B^T*Dを計算する。
 	memset (__DB__, 0, size * nvstat * sizeof (double));
 	mat_mul2 (__DB__, D, __B__, nvstat, size, nvstat);
-	// �v�f�����̌v�Z�B�e�ʂ��傫�����߈�x�ɑS�����v�Z�������v�Z����B
+	// 要素剛性の計算。容量が大きいため一度に全部を計算せず一つ一つ計算する。
 	for (i = 0; i < size; i++) {
 		ex = e->conn [i / ndof]; dofx = i % ndof;
 		kx = rev_line_info [ex * mdof + dofx];
@@ -2073,12 +2073,12 @@ void attach_B_mat (const Element *e, const double *D, int nint)
 			ey = e->conn [j / ndof]; dofy = j % ndof;
 			ypos = ey * mdof + dofy;
 			ky = rev_line_info [ypos];
-			// ������Ke[i][j]�̂݌v�Z����
+			// ここでKe[i][j]のみ計算する
 			Ke = 0;
 			for (k = 0; k < nvstat; k++)
 				Ke += __B__ [k * size + i] * __DB__ [k * size + j];
-			// �ŏI�I�ȗv�f�����̌v�Z�B���ʉ��́E�c���Ǝ��Ώ̖��ł͂�����W�����قȂ�B
-			// �W���͐ϕ��_���Ƃ̏d�݂ƃ��R�r�A���̐ς����A���Ώ̖��ł͔��a��������B
+			// 最終的な要素剛性の計算。平面応力・歪問題と軸対称問題ではかける係数が異なる。
+			// 係数は積分点ごとの重みとヤコビアンの積だが、軸対称問題では半径もかける。
 			switch (prob) {
 			case PT_PSS:
 				thick = ((PSS_GeomData *) (e->part->geom))->thick;
@@ -2090,9 +2090,9 @@ void attach_B_mat (const Element *e, const double *D, int nint)
 				Ke *= cp->iJH [nnode * 3] * factor;
 				break;
 			}
-			// �v�f������S�̍����ɑg�ݍ���
-			// �o���h�}�g���b�N�X�v�Z�܂ł́u���̂܂܁v�ʒu��T���đg�ݍ��ނ��A
-			// �Ώ̃}�g���b�N�X�͑Ίp���̏ゾ���ɒl�����邽�߁A�ʒu�𒲂ׂĊY������l�������Z�b�g����B
+			// 要素剛性を全体剛性に組み込む
+			// バンドマトリックス計算までは「そのまま」位置を探して組み込むが、
+			// 対称マトリックスは対角線の上だけに値を入れるため、位置を調べて該当する値だけをセットする。
 			if (ky < rank_line_info [KLDOF_NONE][1]) {
 				if (sys_range_mode == RANGE_ALL || sys_range_mode == RANGE_BEGIN_END) {
 					line_info [kx].p [ky] += Ke;
@@ -2100,17 +2100,17 @@ void attach_B_mat (const Element *e, const double *D, int nint)
 					if (ky >= kx)
 						line_info [kx].p [ky] += Ke;
 				}
-			// �ψʍS�������̂����鎩�R�x�́A�v�f�����ƕψʂ����������̂��׏d�x�N�g���֑������ށB
+			// 変位拘束条件のかかる自由度は、要素剛性と変位をかけたものを荷重ベクトルへ足し込む。
 			} else if (ky < rank_line_info [KLDOF_NONZERO][1])
 				rhs_value [kx] -= Ke * disp [ypos];
 		}
 	}
 }
 
-/* ���E�����̍쐬
-   �׏d�͌v�Z�p�z��ɓ����
+/* 境界条件の作成
+   荷重は計算用配列に入れる
  */
-/* �׏d�f�[�^�[�̌v�Z */
+/* 荷重データーの計算 */
 static void calc_load_value (const LoadData *p, double *load)
 {
 	double v;
@@ -2127,7 +2127,7 @@ static void calc_load_value (const LoadData *p, double *load)
 		for (i = 0, v = 0; i < ndim; i++)
 			v += p->value [i] * p->value [i];
 		v = sqrt (v);
-		// 0�x�N�g���Ȃ�l�̐ݒ���������[�`�����甲����
+		// 0ベクトルなら値の設定をせずルーチンから抜ける
 		if (fabs (v) <= tolerance) break;
 	case BC_VAL_VEC: // fall thrurh
 		for (i = 0; i < ndim; i++)
@@ -2136,7 +2136,7 @@ static void calc_load_value (const LoadData *p, double *load)
 	}
 }
 
-// �ߓ_�׏d�̐ݒ�
+// 節点荷重の設定
 void set_pload (const LoadData *p)
 {
 	int i, j, pos, rpos;
@@ -2148,14 +2148,14 @@ void set_pload (const LoadData *p)
 			rpos = rev_line_info [pos];
 			if (rpos >= rank_line_info [KLDOF_NONE][1]) continue;
 			f = p->load [i];
-			// ���Ώ̖��̏ꍇ�A�׏d�͕K�����a���|���邽�߁A�׏d�_��X���W�����o���悤�ɂ��Ă���
+			// 軸対称問題の場合、荷重は必ず半径を掛けるため、荷重点のX座標を取り出すようにしている
 			if (prob == PT_AXSOL) f *= coord [p->data [j] * mdof];
 			lhs_value [rpos] = rhs_value [rpos] += f;
 		}
 	}
 }
 
-/* �Ӊ׏d�̐ݒ�*/
+/* 辺荷重の設定*/
 static void calc_edge_load (LoadData *p, const Element *e, int *face, int nint)
 {
 	int i, j, k;
@@ -2167,7 +2167,7 @@ static void calc_edge_load (LoadData *p, const Element *e, int *face, int nint)
 	double *H = info->dN + nint * nnode;
 	double *N = info->N + nint * nnode;
 	double wt = info->wt [nint];
-	// �ڐ��x�N�g���ƃ��R�r�A�������߂�
+	// 接線ベクトルとヤコビアンを求める
 	memset (x, 0, sizeof (double) * ndim);
 	for (J = i = 0; i < ndim; i++) {
 		for (j = 0; j < nnode; j++) {
@@ -2177,12 +2177,12 @@ static void calc_edge_load (LoadData *p, const Element *e, int *face, int nint)
 	}
 	J = sqrt (J);
 	if (fabs(J) < tolerance) return;
-	for (i = 0; i < ndim; i++) x [i] /= J;	// �P�ʃx�N�g���ɂ���
-	if (p->val_type % 10 == BC_NORMAL) {		// �ʂɐ����ȉ׏d�̌��������߂�
+	for (i = 0; i < ndim; i++) x [i] /= J;	// 単位ベクトルにする
+	if (p->val_type % 10 == BC_NORMAL) {		// 面に垂直な荷重の向きを求める
 		if (ndim == 2)
 			n [0] = x [1], n [1] = -x [0];
 		if (ndim == 3)
-			;	// ������
+			;	// 未実装
 		for (i = 0; i < nnode; i++) {
 			for (j = 0; j < ndof; j++) {
 				pos = e->conn [face [i]] * ndof + j;
@@ -2220,7 +2220,7 @@ static void set_fload (LoadData *p)
 	}
 }
 
-// �ϕ��_���Ƃ̑̐ϗ͂����߂�
+// 積分点ごとの体積力を求める
 static void calc_bload (const LoadData *p, const Element *e, int nint)
 {
 	int i, j;
@@ -2232,16 +2232,16 @@ static void calc_bload (const LoadData *p, const Element *e, int nint)
 	double *H = info->dN + nint * nnode * ndim;
 	double *N = info->N + nint * nnode;
 	double wt = info->wt [nint];
-	// ���R�r�A�������߂�B
+	// ヤコビアンを求める。
 	calc_Jmat (J, H, e);
 	detJ = invJ_2D (iJ, J);
 	f = detJ * wt;
-	// ���d���l���B
+	// 自重を考慮。
 	if (p->val_type / 10 == BC_DENSITY) f *= e->part->mat->density;
-	// ���Ώ̖��ł͐ϕ��_�̔��a��������K�v������B
+	// 軸対称問題では積分点の半径をかける必要がある。
 	if (prob == PT_AXSOL) {
 		cx = 0;
-		for (j = 0; j < nnode; j++)	// �ϕ��_�ł̔��a�����߂�
+		for (j = 0; j < nnode; j++)	// 積分点での半径を求める
 			cx += N [j] * coord [e->conn [j] * mdof];
 		f *= cx;
 	}
@@ -2285,63 +2285,63 @@ static void calc_load ()
 
 // MODULE TOTAL_MAT
 /*
-   ��������S�̍����̍쐬�֘A���[�`���{��
+   ここから全体剛性の作成関連ルーチン本体
 
-   �ŏI�I�ɋ��߂�S�̍����s��͈ȉ��̂Ƃ���ł���B
-   	u1:���m�ψ�
-	u2:0�ł͂Ȃ����m�ψ�
-	u3:0�̊��m�ψ�
-	u4:�v�f�ɐڑ����Ă��Ȃ��ψ�
+   最終的に求める全体剛性行列は以下のとおりである。
+   	u1:未知変位
+	u2:0ではない既知変位
+	u3:0の既知変位
+	u4:要素に接続していない変位
    [ K11 K12 K13 K14 ][ u1 ] = [ f1 ]
    [ K21 K22 K23 K24 ][ u2 ]   [ f2 ]
    [ K31 K32 K33 K34 ][ u3 ]   [ f3 ]
    [ K41 K42 K43 K44 ][ u4 ]   [ f4 ]
 
-   ������W�J����ƈȉ��̂悤�ɂȂ�B
+   これらを展開すると以下のようになる。
    K11*u1+K12*u2+K13*u3+K14*u4 = f1
    K21*u1+K22*u2+K23*u3+K24*u4 = f2
    K31*u1+K32*u2+K33*u3+K34*u4 = f3
    K41*u1+K42*u2+K43*u3+K44*u4 = f4
 
-   u4�̍��͑Ή�����v�f�������������������Ȃ�����0�ƂȂ�B�]���ĕ���������֘A���鍀�����O�ł���B
-   u3=0������A���̍����ق��ď��O�ł���B�������A�v�Z�㍄����0�ƂȂ�ƌv�Z�Ɏ��s����̂�
-   ���͂���������̂ŁA���̓_���l�������K33=-I�Ƃ���K�v������B
-   ����u2���E�ӂɈړ�����BK22��K33���lK22=-I�ƒu�����Ƃ��ł���B
-   �W�J���͈ȉ��̂悤�ɒu����������B
+   u4の項は対応する要素剛性が剛性を持ちえないから0となる。従って方程式から関連する項を除外できる。
+   u3=0だから、この項も黙って除外できる。ただし、計算上剛性が0となると計算に失敗するのと
+   反力が発生するので、この点を考慮するとK33=-Iとする必要がある。
+   次にu2を右辺に移動する。K22もK33同様K22=-Iと置くことができる。
+   展開式は以下のように置き換えられる。
    K11*u1     = f1-K12*u2
    K21*u1-If2 =   -K22*u2
    K31*u1-If3 =   -K32*u2
 
-   ������܂Ƃ߂�ƈȉ��̂悤�ɂȂ�Bf2��f3�͖��m��(����)�ɂȂ�̂ŁA���ӂɏW�߂Ă���B
+   これをまとめると以下のようになる。f2とf3は未知項(反力)になるので、左辺に集めている。
    [ K11 O   O   ][ u1 ] = [ f1-K12*u2 ]
    [ K21 -I  O   ][ f2 ]   [ -K22*u2 ]
    [ K31 O   -I  ][ f3 ]   [ -K32*u2 ]
-   ��������̂܂܉����Ă������̂����A�Ђ��݂Ɖ��͂����߂���A�v�f�̓����ߓ_�͂����߂邱�Ƃ��ł��A
-   ���̑��a�͔��͂ƊO�̘͂a�ɓ������Ȃ邱�Ƃ��m���Ă���B�ł���Ύ����I��1�s�ڂɂ��ĉ����΂������ƂɂȂ�B
+   これをこのまま解いてもいいのだが、ひずみと応力を求めた後、要素の等価節点力を求めることができ、
+   この総和は反力と外力の和に等しくなることが知られている。であれば実質的に1行目について解けばいいことになる。
 
-   ���ɔ����v�Z���s���ꍇ���l����B
-   ���R�����A���������v�f�������Čv�Z����͓̂���ł͂Ȃ�����A�S�̍�������x�ۑ����邱�ƂɂȂ�B
+   次に反復計算を行う場合を考える。
+   当然だが、いちいち要素剛性を再計算するのは得策ではないから、全体剛性を一度保存することになる。
 
-   .1) �e�v�f�̊e�ߓ_�ɂ��čő�l�ƍŏ��l��T���B
-   .2) 1)�̊����̒l���͈͊O�ɂ���΁A�����̒l���X�V����
-   .3) 1)�`2)���e���R�x�ɐݒ肷��B
-   .1) ���q�ߓ_��T���B��������X�g�̖����ɓ���Ă����B
-   .3) rev_line_info�𑖍����Aline_info�̑����ʒu�Ɏ��R�x�Ɛߓ_�ԍ����L�^����B
-   .1) ��S�����R�x�A0�ł͂Ȃ��S�����R�x�A0�S�����R�x�A���q�̏��ɕ��ׂ�B
-   .2) line_info�͂��̏��Ԃɕ��ׂ�B�Ȃ��A�K�v�Ȃ͔̂�S�����R�x�����ł���B
+   .1) 各要素の各節点について最大値と最小値を探す。
+   .2) 1)の既存の値より範囲外にあれば、これらの値を更新する
+   .3) 1)～2)を各自由度に設定する。
+   .1) 水子節点を探す。これをリストの末尾に入れておく。
+   .3) rev_line_infoを走査し、line_infoの相当位置に自由度と節点番号を記録する。
+   .1) 非拘束自由度、0ではない拘束自由度、0拘束自由度、水子の順に並べる。
+   .2) line_infoはこの順番に並べる。なお、必要なのは非拘束自由度だけである。
 */
 
-/* �v�f�ɐڑ����Ă��Ȃ��ߓ_��T�� */
+/* 要素に接続していない節点を探す */
 void set_connected_dof ()
 {
 	int i, j, k, nid;
 	int ndof = etinfo [prob].ndof;
 	Element *p;
 
-	// ���߂ɐ��q�ߓ_�ł���Ɖ��肷��B
+	// 初めに水子節点であると仮定する。
 	for (i = 0; i < ntnode * mdof; i++)
 		nodal_dof_list [i] = KLDOF_ORPHAN;
-	// �R�l�N�e�B�r�e�B�̃`�F�b�N�B�v�f�ɐڑ�����ߓ_��KLDOF_NONE���Z�b�g
+	// コネクティビティのチェック。要素に接続する節点にKLDOF_NONEをセット
 	for (i = 0, p = elem; i < ntelem; i++, p++)
 		for (j = 0; j < p->info->info1->nnode; j++) {
 			nid = p->conn [j];
@@ -2350,7 +2350,7 @@ void set_connected_dof ()
 		}
 }
 
-/* ���E������K�p���鎩�R�x�Ɉ������ */
+/* 境界条件を適用する自由度に印をつける */
 void set_bc_pos ()
 {
 	int i, j, k, pos;
@@ -2371,18 +2371,18 @@ void set_bc_pos ()
 	}
 }
 
-/* ��S�����R�x�E�S�����R�x�E���q�ߓ_�̏��ɐߓ_�ԍ��Ǝ��R�x����ׂ� */
+/* 非拘束自由度・拘束自由度・水子節点の順に節点番号と自由度を並べる */
 void create_rev_line_info ()
 {
 	int i, j, kltype, pos, count;
-	// �ŏ��ƍŌ�̈ʒu�͖ق��Č��܂�̂ł��̎��_�Őݒ�
+	// 最初と最後の位置は黙って決まるのでこの時点で設定
 	rank_line_info [KLDOF_NONE][0] = 0;
 	rank_line_info [KLDOF_ORPHAN][1] = ntnode * mdof;
 	for (kltype = KLDOF_NONE, count = 0; kltype < KLDOF_ORPHAN; kltype++) {
 		rank_line_info [kltype][1] = rank_line_info [kltype][0];
-		// �S���^�C�v�̌����Ɣz�u�B�z���[1]-[0]�����ɂȂ�B
-		// �]���Ċe�f�[�^�[�̏I�_�ʒu�͎��ۂ̏I�_�ʒu�̈�O�ɂ���B
-		// ����ď����A�N�Z�X����ꍇ��C�̔z��ɕ키�悤�ɂ��Ă���B
+		// 拘束タイプの検索と配置。配列の[1]-[0]が個数になる。
+		// 従って各データーの終点位置は実際の終点位置の一つ前にある。
+		// よって順次アクセスする場合はCの配列に倣うようにしている。
 		for (i = 0; i < ntnode; i++) {
 			for (j = 0; j < mdof; j++) {
 				pos = i * mdof + j;
@@ -2392,7 +2392,7 @@ void create_rev_line_info ()
 				}
 			}
 		}
-		// ���̃f�[�^�[�̋N�_�ʒu�͑O�̃f�[�^�[�́u�I�_�ʒu�v�ɓ������B
+		// 次のデーターの起点位置は前のデーターの「終点位置」に等しい。
 		rank_line_info [kltype + 1][0] = rank_line_info [kltype][1] = count;
 	}
 	rank_line_info [KLDOF_ORPHAN][0] = rank_line_info [KLDOF_ZERO][1];
@@ -2427,7 +2427,7 @@ void set_range_all ()
 	}
 }
 
-/* �e�v�f�̃R�l�N�e�B�r�e�B�\����e���C���ɂ�����o���h�������߂�B */
+/* 各要素のコネクティビティ―から各ラインにおけるバンド幅を求める。 */
 void set_range_by_elem ()
 {
 	int i, j, k, pos, minpos, maxpos;
@@ -2440,7 +2440,7 @@ void set_range_by_elem ()
 		int nnode = info->nnode;
 		minpos = ntnode * mdof;
 		maxpos = 0;
-		// �v�f�ɂ�����R�l�N�e�B�r�e�B�͈̔͂�T��
+		// 要素におけるコネクティビティの範囲を探す
 		for (j = 0; j < nnode; j++) {
 			for (k = 0; k < ndof; k++) {
 				pos = rev_line_info [e->conn [j] * mdof + k];
@@ -2467,7 +2467,7 @@ void set_range_by_elem ()
 	}
 }
 
-/* �S�̍����}�g���b�N�X�̃T�C�Y���v�Z���� */
+/* 全体剛性マトリックスのサイズを計算する */
 int set_K_size ()
 {
 	int i, size;
@@ -2481,16 +2481,16 @@ int set_K_size ()
 }
 
 /*
- * �S�̍����̑g�ݗ���
+ * 全体剛性の組み立て
  */
 
 /*
- * �S�̍����̃Z�b�g�A�b�v
- *   �ȉ��Ɏg�p���������ŏ����ɂȂ�悤�ɂ��邩�l����
- * �Z�@
- *   �S���R�x�����߂�
- *   ���C�����̃������[�����蓖�Ă�
- *   ���C�����̐ݒ���s���B�����ʒu�͑Ίp����ɂ���A�S���͂Ȃ���ԂƂ���B
+ * 全体剛性のセットアップ
+ *   以下に使用メモリが最小限になるようにするか考えた
+ * 算法
+ *   全自由度を求める
+ *   ライン情報のメモリーを割り当てる
+ *   ライン情報の設定を行う。初期位置は対角線上にあり、拘束はない状態とする。
  */
 void create_K_info (FILE *fout)
 {
@@ -2572,14 +2572,14 @@ void calc_K_mat (FILE *fout)
 }
 
 /*
- * �o���h�}�g���b�N�X�`���̕�����������
+ * バンドマトリックス形式の方程式を解く
  */
 void solve_band_mat (double tol)
 {
 	int i, j, k, size;
 	double pivot, Kji;
 
-	// �O�i����
+	// 前進消去
 	size = rank_line_info [KLDOF_NONE][1];
 	for (i = 0; i < size; i++) {
 		pivot = line_info [i].p [i];
@@ -2595,8 +2595,8 @@ void solve_band_mat (double tol)
 			else if (sys_range_mode == RANGE_SYMM_UPPER)
 				Kji = line_info [i].p [j];
 			if (fabs (Kji) < tol) continue;
-			// �t���}�g���b�N�X�ƃo���h�}�g���b�N�X�̓s�{�b�g�̒�������v�Z���邪
-			// �㔼���͑Ίp�v�f����v�Z����悤�ɂ���
+			// フルマトリックスとバンドマトリックスはピボットの直下から計算するが
+			// 上半分は対角要素から計算するようにする
 			if (sys_range_mode == RANGE_ALL || sys_range_mode == RANGE_BEGIN_END)
 				for (k = i + 1; k < j; k++)
 					line_info [j].p [k] -= line_info [i].p [k] * Kji / pivot;
@@ -2606,7 +2606,7 @@ void solve_band_mat (double tol)
 		}
 	}
 	//fputs ("end of forword deletion\n", stderr);
-	// ��ޑ��
+	// 後退代入
 	for (i = size - 1; i >= 0; i--) {
 		pivot = line_info [i].p [i];
 		for (j = i + 1; j < line_info [i].end; j++) {
@@ -2621,58 +2621,58 @@ void solve_band_mat (double tol)
 	dump_bc (OFF);
 }
 
-/* ���͂ƂЂ��݁A�ό`���z�e���\�����v�Z���� */
+/* 応力とひずみ、変形勾配テンソルを計算する */
 /*
- * �����Ђ��݂̌v�Z
- * �����Ђ��݂̌v�Z�̓�=Bu�Őϕ��_���Ƃɋ��܂�B
- * B�͕��ʉ��́E���ʂЂ��ݗv�f�̏ꍇ�ȉ��̂悤�ɂȂ�
-   B = [ 1 0 0 0 ][ J^-1�EH ��      ]
-       [ 0 0 0 1 ][ ��      J^-1�EH ]
+ * 微小ひずみの計算
+ * 微小ひずみの計算はε=Buで積分点ごとに求まる。
+ * Bは平面応力・平面ひずみ要素の場合以下のようになる
+   B = [ 1 0 0 0 ][ J^-1・H Φ      ]
+       [ 0 0 0 1 ][ Φ      J^-1・H ]
        [ 0 1 1 0 ]
-   �����Ń���nnode�~ndim�̃[���s��ł���BJ^-1�̓��R�r�A���̋t�s��A
-   H�͌`��֐��̔����`���}�g���b�N�X�z�u�������̂Ŋe��Ɍ`��֐���}��ϐ��ŕΔ����������̂����ԁB
-   ������J^-1�EH���ȉ��̂悤�ɕ\������B
-   J^-1�EH = [ H1 ]
+   ここでΦはnnode×ndimのゼロ行列であり。J^-1はヤコビアンの逆行列、
+   Hは形状関数の微分形をマトリックス配置したもので各列に形状関数を媒介変数で偏微分したものが並ぶ。
+   ここでJ^-1・Hを以下のように表示する。
+   J^-1・H = [ H1 ]
              [ H2 ]
-   �����B��W�J����ƈȉ��̂悤�ɂȂ�B
+   これでBを展開すると以下のようになる。
 
-   B = [ 1 0 0 0 ][ H1 �� ]
-       [ 0 0 0 1 ][ H2 �� ]
-       [ 0 1 1 0 ][ �� H1 ]
-                  [ �� H2 ]
-     = [ H1 �� ]
-       [ �� H2 ]
+   B = [ 1 0 0 0 ][ H1 Φ ]
+       [ 0 0 0 1 ][ H2 Φ ]
+       [ 0 1 1 0 ][ Φ H1 ]
+                  [ Φ H2 ]
+     = [ H1 Φ ]
+       [ Φ H2 ]
        [ H2 H1 ]
-   �c�Â̓�=B*u�ŋ��߂���B
-   �� = [ H1 �� ][ u ]
-        [ �� H2 ][ v ]
+   歪εはε=B*uで求められる。
+   ε = [ H1 Φ ][ u ]
+        [ Φ H2 ][ v ]
         [ H2 H1 ]
       = [ H1*u      ]
         [ H2*v      ]
         [ H2*u+H1*v ]
 
- * ���͂̌v�Z
- * ���͂ƂЂ��݂̊֌W�� ��=D�� ����e�ՂɌv�Z�����B
+ * 応力の計算
+ * 応力とひずみの関係式 σ=Dε から容易に計算される。
  *
- * �����ߓ_�͂̌v�Z
- * ���̓Ђ�p���� pe=��B^T��|J|dt1dt2 ����v�Z����B
+ * 等価節点力の計算
+ * 応力σを用いて pe=∫B^Tσ|J|dt1dt2 から計算する。
  *
- * �ό`���z�̌v�Z
- *   �ȉ��̎�����v�Z���s���B
- *   �@F=(iJH*x)^T
- *   ������iJH�̓��R�r�A���̋t�s��ƌ`��֐��̌��z�Ax�͕ό`��̍��W�ł���B
- *   ���̂܂܋��߂�Ɠ]�u�`���ɂȂ�̂ŁA�v�Z����F�̍s������ւ���
+ * 変形勾配の計算
+ *   以下の式から計算を行う。
+ *   　F=(iJH*x)^T
+ *   ここでiJHはヤコビアンの逆行列と形状関数の勾配、xは変形後の座標である。
+ *   このまま求めると転置形式になるので、計算時にFの行列を入れ替える
  *
- * ���Ώ̌ő̗v�f�̌��ʂ��v�Z����B
-   ��{�I�ɓ񎟌����ʗv�f�Ɠ������W�b�N�����A�a�����̂Ђ��݂����邽�߂��̕����̌v�Z�ɑ��Ⴊ������B
-   �Ђ��ݕψʍs��͎��̂悤�ɂȂ�B
+ * 軸対称固体要素の結果を計算する。
+   基本的に二次元平面要素と同じロジックだが、径方向のひずみが入るためこの部分の計算に相違が生じる。
+   ひずみ変位行列は次のようになる。
    B = [ 1 0 0 0 0 ][ J^-1*H 0       ]
        [ 0 0 0 1 0 ][ 0      J^-1*H  ]
        [ 0 0 0 0 1 ][ 0      dNi/dNj ]
        [ 0 1 1 0 0 ]
-   �����Ōa�����̂Ђ��݂�dNi/dNj�ƒ�`�������A����͐ϕ��_�̒l�̑��a���Ƃ�A
-   ���q�͒��ڂ���ϕ��_�ł̒l���Ƃ�B
-   ������dR=dNi/dNj�ƒu���A���ʗv�f���l�ɓW�J����ƈȉ��̂悤�ɂȂ�B
+   ここで径方向のひずみをdNi/dNjと定義したが、分母は積分点の値の総和をとり、
+   分子は着目する積分点での値をとる。
+   ここでdR=dNi/dNjと置き、平面要素同様に展開すると以下のようになる。
    B = [ 1 0 0 0 0 ][ H1 0  ]
        [ 0 0 0 1 0 ][ H2 0  ]
        [ 0 0 0 0 1 ][ 0  H1 ]
@@ -2682,8 +2682,8 @@ void solve_band_mat (double tol)
        [ 0  H2 ]
        [ 0  dR ]
        [ H2 H1 ]
-�@ ����ɕψʂ�������ƂЂ��݂����܂�B
-   ��= [ ��x ��y ��z ��xy ]^T
+　 これに変位をかけるとひずみが求まる。
+   ε= [ εx εy εz γxy ]^T
    Bu = [ H1 0  ][ u ]
         [ 0  H2 ][ v ]
         [ 0  dR ]
@@ -2714,7 +2714,7 @@ void calc_PL_stress_strain ()
 			memset (strain, 0, sizeof (double) * 6);
 			memset (stress, 0, sizeof (double) * 6);
 			//fprintf (stderr, "%5d\n", prob);
-			// ���͂ƂЂ��݂̌v�Z�B
+			// 応力とひずみの計算。
 			for (k = 0; k < nnode; k++) {
 				int pos1 = e->conn [k] * mdof;
 				int pos2 = pos1 + 1;
@@ -2744,7 +2744,7 @@ void calc_PL_stress_strain ()
 						break;
 				}
 			}
-			// �ߓ_�͂̌v�Z�B�O�͂Ɣ��͂�������B
+			// 節点力の計算。外力と反力が得られる。
 			f = cp->detJ * wt [j];
 			for (k = 0; k < nnode; k++) {
 				double f2 = f;
@@ -2755,8 +2755,8 @@ void calc_PL_stress_strain ()
 				force [pos2] += f2 * (H2 [k] * stress [1] + H1 [k] * stress [3]);
 				if (prob == PT_AXSOL) force [pos1] += f2 * (H3 [k] * stress [2]);
 			}
-			// �ό`���z�e���\���̌v�Z
-			// F=(J^-1H)^T�ŋ��߂���B
+			// 変形勾配テンソルの計算
+			// F=(J^-1H)^Tで求められる。
 			memset (cp->FT, 0, sizeof (double) * 9);
 			for (k = 0; k < ndim; k++)
 				for (l = 0; l < ndim; l++)
@@ -2773,7 +2773,7 @@ void calc_PL_stress_strain ()
 void calc_result ()
 {
 	int i, j, pos2, pos;
-	// �ߓ_�ψʂƉ׏d�̐���
+	// 節点変位と荷重の整列
 	for (i = 0; i < ntnode; i++) {
 		for (j = 0; j < mdof; j++) {
 			pos = i * mdof + j;
@@ -2786,7 +2786,7 @@ void calc_result ()
 	calc_PL_stress_strain ();
 }
 
-/* ���ʏo�� */
+/* 結果出力 */
 void write_result (FILE *fout)
 {
 	int i, j, k, l;
@@ -2853,9 +2853,9 @@ void write_result (FILE *fout)
 }
 
 /*
- * �������̉��
+ * メモリの解放
  */
-/* index�܂ł̗v�f���f�[�^�[��S�폜���A�v�f���X�g���폜����B */
+/* indexまでの要素内データーを全削除し、要素リストを削除する。 */
 void free_elem_data (int index)
 {
 	int i, j;
